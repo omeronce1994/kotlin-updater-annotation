@@ -4,7 +4,6 @@ import com.thinkinglogic.builder.annotation.Builder
 import com.thinkinglogic.builder.annotation.DefaultValue
 
 class ClassWithConstructorParameters
-@Builder
 constructor(
         forename: String,
         @DefaultValue("Anon") surname: String = "Anon",

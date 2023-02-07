@@ -16,13 +16,5 @@ data class SimpleDataClass(
         @DefaultValue("LocalDate.MIN") val defaultDate: LocalDate = LocalDate.MIN
 ) {
 
-    /**
-     * @return a Builder initialised with fields from this object.
-     */
-    fun toBuilder() = SimpleDataClassBuilder(this)
 
-    companion object {
-        @JvmStatic
-        fun builder() = SimpleDataClassBuilder()
-    }
 }

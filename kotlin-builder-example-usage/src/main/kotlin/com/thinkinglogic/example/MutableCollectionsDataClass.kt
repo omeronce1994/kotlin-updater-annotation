@@ -5,7 +5,7 @@ import com.thinkinglogic.builder.annotation.Mutable
 import com.thinkinglogic.builder.annotation.NullableType
 import java.time.LocalDate
 
-@Builder
+
 data class MutableCollectionsDataClass(
         @Mutable val listOfStrings: MutableList<String>,
         @Mutable val listOfAny: MutableList<Any>,

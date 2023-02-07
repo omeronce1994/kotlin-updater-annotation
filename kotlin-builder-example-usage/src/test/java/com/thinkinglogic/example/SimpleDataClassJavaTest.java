@@ -15,31 +15,6 @@ public class SimpleDataClassJavaTest {
         // given
         SimpleDataClassBuilder builder = new SimpleDataClassBuilder();
 
-        // when
-        Throwable exception = catchThrowable(() -> builder.notNullString(null));
-
-        // then
-        then(exception)
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("notNullString");
-    }
-
-    @Test
-    void toBuilderShouldReturnInitialisedBuilder() {
-        // given
-        SimpleDataClass original = new SimpleDataClassBuilder()
-            .date(LocalDate.now())
-                .notNullString("Foo")
-                .nullableString("Bar")
-                .notNullLong(123L)
-                .value("valueProperty")
-                .build();
-
-        // when
-        SimpleDataClass result = original.toBuilder().build();
-
-        // then
-        assertThat(result).isEqualTo(original);
     }
 
     @Test
@@ -47,9 +22,7 @@ public class SimpleDataClassJavaTest {
         // given
 
         // when
-        SimpleDataClassBuilder builder = SimpleDataClass.builder();
 
         // then
-        assertThat(builder).isNotNull();
     }
 }

@@ -6,6 +6,10 @@ import com.thinkinglogic.builder.annotation.Builder
 import com.thinkinglogic.builder.annotation.DefaultValue
 import com.thinkinglogic.builder.annotation.Mutable
 import com.thinkinglogic.builder.annotation.NullableType
+import com.thinkinglogic.builder.annotation.ktx.JsonKtx
+import com.thinkinglogic.builder.annotation.ktx.JsonKtx.toAnyMap
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import org.jetbrains.annotations.NotNull
 import java.io.File
 import java.util.*
@@ -86,21 +90,25 @@ class BuilderProcessor : AbstractProcessor() {
 
         processingEnv.noteMessage { "Writing $packageName.$builderClassName" }
 
-        val builderSpec = TypeSpec.classBuilder(builderClassName)
         val builderClass = ClassName(packageName, builderClassName)
+        val builderSpec = TypeSpec.classBuilder(builderClassName).addModifiers(KModifier.DATA)
+        builderSpec.primaryConstructor(*fields.map{ it.asProperty() }.toTypedArray())
+        builderSpec.addType(createCompanionObject(classToBuild, builderClass))
+        val constructorBuilder = FunSpec.constructorBuilder()
 
-        fields.forEach { field ->
-            processingEnv.noteMessage { "Adding field: $field" }
-            builderSpec.addProperty(field.asProperty())
-            builderSpec.addFunction(field.asSetterFunctionReturning(builderClass))
-        }
-
-        builderSpec.primaryConstructor(FunSpec.constructorBuilder().build())
-        builderSpec.addFunction(createConstructor(fields, classToBuild))
-        builderSpec.addFunction(createBuildFunction(fields, classToBuild))
-        builderSpec.addFunction(createCheckRequiredFieldsFunction(fields))
+//        fields.forEach { field ->
+//            processingEnv.noteMessage { "Adding field: $field" }
+//            builderSpec.addProperty(field.asProperty())
+//            builderSpec.primaryConstructor()
+//        }
+        //builderSpec.primaryConstructor(constructorBuilder.build())
 
         FileSpec.builder(packageName, builderClassName)
+                .addImport(Json::class, "")
+                .addImport(JsonElement::class, "")
+                .addImport(JsonKtx::class, "toAnyMap")
+                .addImport(JsonKtx::class, "toDataClass")
+                .addImport(JsonKtx::class, "toJsonElement")
                 .addType(builderSpec.build())
                 .build()
                 .writeTo(sourceRoot)
@@ -116,6 +124,18 @@ class BuilderProcessor : AbstractProcessor() {
                 .map { it.simpleName.toString() }
                 .toSet()
         return fields.filter { constructorParamNames.contains(it.simpleName.toString()) }
+    }
+
+    private fun TypeSpec.Builder.primaryConstructor(vararg properties: PropertySpec): TypeSpec.Builder {
+        val propertySpecs = properties.map { p -> p.toBuilder().initializer(p.name).build() }
+        val parameters = propertySpecs.map { ParameterSpec.builder(it.name, it.type).defaultValue("null").build() }
+        val constructor = FunSpec.constructorBuilder()
+            .addParameters(parameters)
+            .build()
+
+        return this
+            .primaryConstructor(constructor)
+            .addProperties(propertySpecs)
     }
 
     /** Creates a constructor for [classType] that accepts an instance of the class to build, from which default values are obtained. */
@@ -149,8 +169,8 @@ class BuilderProcessor : AbstractProcessor() {
 
     /** Creates a 'build()' function that will invoke a constructor for [returnType], passing [fields] as arguments and returning the new instance. */
     private fun createBuildFunction(fields: List<Element>, returnType: TypeElement): FunSpec {
-        val code = StringBuilder("$CHECK_REQUIRED_FIELDS_FUNCTION_NAME()")
-        code.appendLine().append("return·${returnType.simpleName}(")
+        val code = StringBuilder()
+        code.append("return·${returnType.simpleName}(")
         val iterator = fields.listIterator()
         while (iterator.hasNext()) {
             val field = iterator.next()
@@ -170,6 +190,27 @@ class BuilderProcessor : AbstractProcessor() {
                 .build()
     }
 
+    private fun createCompanionObject(sourceType: TypeElement, classToBuild: ClassName)
+        = TypeSpec.companionObjectBuilder().addFunction(createUpdateFunction(sourceType, classToBuild)).build()
+
+    private fun createUpdateFunction(sourceType: TypeElement, classToBuild: ClassName): FunSpec {
+        val code = StringBuilder()
+        code.appendLine("val builderMap = builder.toAnyMap()")
+        code.appendLine("val fieldsMap = this.toAnyMap().toMutableMap()")
+        code.appendLine("builderMap.entries.forEach {")
+        code.appendLine("\tif (it.value != null) {")
+        code.appendLine("\t\tfieldsMap[it.key] = it.value")
+        code.appendLine("\t}")
+        code.appendLine("}")
+        code.appendLine("return Json.encodeToString(JsonElement.serializer(), fieldsMap.toJsonElement()).toDataClass()")
+        return FunSpec.builder("update")
+            .addParameter("builder", classToBuild)
+            .receiver(sourceType.asKotlinClassName())
+            .returns(sourceType.asKotlinTypeName())
+            .addCode(code.toString())
+            .build()
+    }
+
     /** Creates a function that will invoke [check] to confirm that each required field is populated. */
     private fun createCheckRequiredFieldsFunction(fields: List<Element>): FunSpec {
         val code = StringBuilder()
@@ -186,10 +227,14 @@ class BuilderProcessor : AbstractProcessor() {
 
     /** Creates a property for the field identified by this element. */
     private fun Element.asProperty(): PropertySpec =
-            PropertySpec.builder(simpleName.toString(), asKotlinTypeName().copy(nullable = true), KModifier.PRIVATE)
-                    .mutable()
-                    .initializer(defaultValue())
+            PropertySpec.builder(simpleName.toString(), asKotlinTypeName().copy(nullable = true), KModifier.PUBLIC)
+                    .initializer(CodeBlock.of("null"))
                     .build()
+
+    private fun Element.asParameter(): ParameterSpec =
+        ParameterSpec.builder(simpleName.toString(), asKotlinTypeName().copy(nullable = true), KModifier.PUBLIC)
+            .defaultValue("null")
+            .build()
 
     /** Returns the correct default value for this element - the value of any [DefaultValue] annotation, or "null". */
     private fun Element.defaultValue(): String {
@@ -263,9 +308,9 @@ class BuilderProcessor : AbstractProcessor() {
     private fun ParameterizedTypeName.asMutableCollection(): ParameterizedTypeName {
         val mutable = MUTABLE_COLLECTIONS[rawType]!!
                 .parameterizedBy(*this.typeArguments.toTypedArray())
-                .copy(annotations = this.annotations)
+                .copy(annotations = this.annotations) as ParameterizedTypeName
         return if (isNullable) {
-            mutable.copy(nullable = true)
+            mutable.copy(nullable = true) as ParameterizedTypeName
         } else {
             mutable
         }

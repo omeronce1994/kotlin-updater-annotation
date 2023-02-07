@@ -5,7 +5,6 @@ import com.thinkinglogic.builder.annotation.NullableType
 import java.time.LocalDate
 import java.util.*
 
-@Builder
 data class ArraysDataClass(
         val arrayOfLongs: Array<Long>,
         val arrayOfStrings: Array<String>,

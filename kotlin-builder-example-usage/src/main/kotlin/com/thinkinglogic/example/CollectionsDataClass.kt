@@ -5,7 +5,7 @@ import com.thinkinglogic.builder.annotation.NullableType
 import java.time.LocalDate
 import java.util.*
 
-@Builder
+
 data class CollectionsDataClass(
         val listOfStrings: List<String>,
         @NullableType val listOfNullableStrings: List<String?>,
