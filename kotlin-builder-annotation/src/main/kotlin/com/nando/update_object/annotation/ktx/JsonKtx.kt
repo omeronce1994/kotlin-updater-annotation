@@ -1,4 +1,4 @@
-package com.thinkinglogic.builder.annotation.ktx
+package com.nando.update_object.annotation.ktx
 
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
@@ -7,13 +7,13 @@ import kotlinx.serialization.properties.Properties
 import kotlinx.serialization.properties.encodeToMap
 
 object JsonKtx {
-    inline fun <reified T> T.toJson(converter: (T) -> String = ::toJsonConverter) = converter(this)
+    inline fun <reified T> T.toJson(converter: (T) -> String = JsonKtx::toJsonConverter) = converter(this)
 
-    inline fun <reified T> String.toDataClass(converter: (String) -> T = ::fromJsonConverter) = converter(this)
+    inline fun <reified T> String.toDataClass(converter: (String) -> T = JsonKtx::fromJsonConverter) = converter(this)
 
     inline fun <reified T> T.toFieldsMap(
-        jsonConverter: (T) -> String = ::toJsonConverter,
-        fromJsonToMapConverter: (json: String) -> Map<String, String> = ::fromJsonConverter
+        jsonConverter: (T) -> String = JsonKtx::toJsonConverter,
+        fromJsonToMapConverter: (json: String) -> Map<String, String> = JsonKtx::fromJsonConverter
     ): Map<String, String> {
         val json = toJson(jsonConverter)
         return json.toDataClass(fromJsonToMapConverter)

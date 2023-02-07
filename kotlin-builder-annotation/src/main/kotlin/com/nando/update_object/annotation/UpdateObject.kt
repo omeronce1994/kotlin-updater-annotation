@@ -1,4 +1,4 @@
-package com.thinkinglogic.builder.annotation
+package com.nando.update_object.annotation
 
 @Retention(AnnotationRetention.SOURCE)
 @Target(AnnotationTarget.CLASS, AnnotationTarget.CONSTRUCTOR)

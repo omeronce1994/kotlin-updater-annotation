@@ -1,11 +1,6 @@
-package com.thinkinglogic.example
+package com.nando.update_object.example
 
-import assertk.assert
-import assertk.assertions.contains
-import assertk.assertions.isNotNull
-import assertk.assertions.message
-import assertk.catch
-import com.thinkinglogic.example.SimpleDataClassBuilder.Companion.update
+import com.nando.update_object.example.SimpleDataClassUpdateObject.Companion.update
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
@@ -25,7 +20,7 @@ internal class SimpleDataClassTest {
         )
 
         // when
-        val actual = SimpleDataClassBuilder(notNullString = "test")
+        val actual = SimpleDataClassUpdateObject(notNullString = "test")
         val copy = expected.copy(notNullString = "test")
         val result = expected.update(actual)
 

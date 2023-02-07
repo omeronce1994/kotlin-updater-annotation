@@ -1,13 +1,8 @@
-package com.thinkinglogic.builder.processor
+package com.nando.update_object.processor
 
+import com.nando.update_object.annotation.UpdateObject
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.thinkinglogic.builder.annotation.*
-import com.thinkinglogic.builder.annotation.ktx.JsonKtx
-import com.thinkinglogic.builder.annotation.ktx.JsonKtx.toAnyMap
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
 import java.io.File
@@ -28,7 +23,7 @@ import javax.tools.Diagnostic.Kind.NOTE
  * Kapt processor for the @Builder annotation.
  * Constructs a Builder for the annotated class.
  */
-@SupportedAnnotationTypes("com.thinkinglogic.builder.annotation.UpdateObject")
+@SupportedAnnotationTypes("com.nando.update_object.annotation.UpdateObject")
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 @SupportedOptions(BuilderProcessor.KAPT_KOTLIN_GENERATED_OPTION_NAME)
 class BuilderProcessor : AbstractProcessor() {
@@ -37,14 +32,18 @@ class BuilderProcessor : AbstractProcessor() {
         const val KAPT_KOTLIN_GENERATED_OPTION_NAME = "kapt.kotlin.generated"
         const val CHECK_REQUIRED_FIELDS_FUNCTION_NAME = "checkRequiredFields"
         val MUTABLE_COLLECTIONS = mapOf(
-                List::class.asClassName() to ClassName("kotlin.collections", "MutableList"),
-                Set::class.asClassName() to ClassName("kotlin.collections", "MutableSet"),
-                Collection::class.asClassName() to ClassName("kotlin.collections", "MutableCollection"),
-                Map::class.asClassName() to ClassName("kotlin.collections", "MutableMap"),
-                Iterator::class.asClassName() to ClassName("kotlin.collections", "MutableIterator"))
+            List::class.asClassName() to ClassName("kotlin.collections", "MutableList"),
+            Set::class.asClassName() to ClassName("kotlin.collections", "MutableSet"),
+            Collection::class.asClassName() to ClassName("kotlin.collections", "MutableCollection"),
+            Map::class.asClassName() to ClassName("kotlin.collections", "MutableMap"),
+            Iterator::class.asClassName() to ClassName("kotlin.collections", "MutableIterator")
+        )
     }
 
-    override fun process(annotations: MutableSet<out TypeElement>?, roundEnv: RoundEnvironment): Boolean {
+    override fun process(
+        annotations: MutableSet<out TypeElement>?,
+        roundEnv: RoundEnvironment
+    ): Boolean {
         val annotatedElements = roundEnv.getElementsAnnotatedWith(UpdateObject::class.java)
         if (annotatedElements.isEmpty()) {
             processingEnv.noteMessage { "No classes annotated with @${UpdateObject::class.java.simpleName} in this round ($roundEnv)" }
@@ -63,8 +62,14 @@ class BuilderProcessor : AbstractProcessor() {
 
         annotatedElements.forEach { annotatedElement ->
             when (annotatedElement.kind) {
-                ElementKind.CLASS -> writeBuilderForClass(annotatedElement as TypeElement, sourceRootFile)
-                ElementKind.CONSTRUCTOR -> writeBuilderForConstructor(annotatedElement as ExecutableElement, sourceRootFile)
+                ElementKind.CLASS -> writeBuilderForClass(
+                    annotatedElement as TypeElement,
+                    sourceRootFile
+                )
+                ElementKind.CONSTRUCTOR -> writeBuilderForConstructor(
+                    annotatedElement as ExecutableElement,
+                    sourceRootFile
+                )
                 else -> annotatedElement.errorMessage { "Invalid element type, expected a class or constructor" }
             }
         }
@@ -79,19 +84,27 @@ class BuilderProcessor : AbstractProcessor() {
 
     /** Invokes [writeBuilder] to create a builder for the given [constructor]. */
     private fun writeBuilderForConstructor(constructor: ExecutableElement, sourceRootFile: File) {
-        writeBuilder(constructor.enclosingElement as TypeElement, constructor.parameters, sourceRootFile)
+        writeBuilder(
+            constructor.enclosingElement as TypeElement,
+            constructor.parameters,
+            sourceRootFile
+        )
     }
 
     /** Writes the source code to create a builder for [classToBuild] within the [sourceRoot] directory. */
-    private fun writeBuilder(classToBuild: TypeElement, fields: List<VariableElement>, sourceRoot: File) {
+    private fun writeBuilder(
+        classToBuild: TypeElement,
+        fields: List<VariableElement>,
+        sourceRoot: File
+    ) {
         val packageName = processingEnv.elementUtils.getPackageOf(classToBuild).toString()
-        val builderClassName = "${classToBuild.simpleName}Builder"
+        val builderClassName = "${classToBuild.simpleName}UpdateObject"
 
         processingEnv.noteMessage { "Writing $packageName.$builderClassName" }
 
         val builderClass = ClassName(packageName, builderClassName)
         val builderSpec = TypeSpec.classBuilder(builderClassName).addModifiers(KModifier.DATA)
-        builderSpec.primaryConstructor(*fields.map{ it.asProperty() }.toTypedArray())
+        builderSpec.primaryConstructor(*fields.map { it.asProperty() }.toTypedArray())
         builderSpec.addType(createCompanionObject(classToBuild, builderClass, fields))
         val constructorBuilder = FunSpec.constructorBuilder()
 
@@ -103,14 +116,9 @@ class BuilderProcessor : AbstractProcessor() {
         //builderSpec.primaryConstructor(constructorBuilder.build())
 
         FileSpec.builder(packageName, builderClassName)
-                .addImport(Json::class, "")
-                .addImport(JsonElement::class, "")
-                .addImport(JsonKtx::class, "toAnyMap")
-                .addImport(JsonKtx::class, "toDataClass")
-                .addImport(JsonKtx::class, "toJsonElement")
-                .addType(builderSpec.build())
-                .build()
-                .writeTo(sourceRoot)
+            .addType(builderSpec.build())
+            .build()
+            .writeTo(sourceRoot)
     }
 
     /** Returns all fields in this type that also appear as a constructor parameter. */
@@ -119,15 +127,17 @@ class BuilderProcessor : AbstractProcessor() {
         val fields = fieldsIn(allMembers)
         val constructors = constructorsIn(allMembers)
         val constructorParamNames = constructors
-                .flatMap { it.parameters }
-                .map { it.simpleName.toString() }
-                .toSet()
+            .flatMap { it.parameters }
+            .map { it.simpleName.toString() }
+            .toSet()
         return fields.filter { constructorParamNames.contains(it.simpleName.toString()) }
     }
 
     private fun TypeSpec.Builder.primaryConstructor(vararg properties: PropertySpec): TypeSpec.Builder {
         val propertySpecs = properties.map { p -> p.toBuilder().initializer(p.name).build() }
-        val parameters = propertySpecs.map { ParameterSpec.builder(it.name, it.type).defaultValue("null").build() }
+        val parameters = propertySpecs.map {
+            ParameterSpec.builder(it.name, it.type).defaultValue("null").build()
+        }
         val constructor = FunSpec.constructorBuilder()
             .addParameters(parameters)
             .build()
@@ -150,20 +160,22 @@ class BuilderProcessor : AbstractProcessor() {
             }
         }
         return FunSpec.constructorBuilder()
-                .addParameter(sourceParameter)
-                .callThisConstructor()
-                .addCode(code.toString())
-                .build()
+            .addParameter(sourceParameter)
+            .callThisConstructor()
+            .addCode(code.toString())
+            .build()
     }
 
     /** Returns a set of the names of fields with getters (actually the names of getter methods with 'get' removed and decapitalised). */
     private fun TypeElement.getterFieldNames(): Set<String> {
         val allMembers = processingEnv.elementUtils.getAllMembers(this)
         return methodsIn(allMembers)
-                .filter { it.simpleName.startsWith("get") && it.parameters.isEmpty() }
-                .map { it.simpleName.toString().substringAfter("get")
-                    .replaceFirstChar { ch -> ch.lowercase(Locale.getDefault()) } }
-                .toSet()
+            .filter { it.simpleName.startsWith("get") && it.parameters.isEmpty() }
+            .map {
+                it.simpleName.toString().substringAfter("get")
+                    .replaceFirstChar { ch -> ch.lowercase(Locale.getDefault()) }
+            }
+            .toSet()
     }
 
     /** Creates a 'build()' function that will invoke a constructor for [returnType], passing [fields] as arguments and returning the new instance. */
@@ -184,28 +196,37 @@ class BuilderProcessor : AbstractProcessor() {
         code.appendLine().append(")").appendLine()
 
         return FunSpec.builder("build")
-                .returns(returnType.asClassName())
-                .addCode(code.toString())
-                .build()
+            .returns(returnType.asClassName())
+            .addCode(code.toString())
+            .build()
     }
 
-    private fun createCompanionObject(sourceType: TypeElement, classToBuild: ClassName, fields: List<VariableElement>)
-        = TypeSpec.companionObjectBuilder().addFunction(createUpdateFunction(sourceType, classToBuild, fields)).build()
+    private fun createCompanionObject(
+        sourceType: TypeElement,
+        classToBuild: ClassName,
+        fields: List<VariableElement>
+    ) = TypeSpec.companionObjectBuilder()
+        .addFunction(createUpdateFunction(sourceType, classToBuild, fields)).build()
 
-    private fun createUpdateFunction(sourceType: TypeElement, classToBuild: ClassName, fields: List<VariableElement>): FunSpec {
+    private fun createUpdateFunction(
+        sourceType: TypeElement,
+        classToBuild: ClassName,
+        fields: List<VariableElement>,
+        updateObjectParameterName: String = "updateObject"
+    ): FunSpec {
         val code = StringBuilder()
         fields.forEach {
-            code.appendLine("val ${it.simpleName} = builder.${it.simpleName} ?: this.${it.simpleName}")
+            code.appendLine("val ${it.simpleName} = $updateObjectParameterName.${it.simpleName} ?: this.${it.simpleName}")
         }
         code.appendLine("val result = ${sourceType.simpleName}(")
         fields.forEachIndexed { index, variableElement ->
-            val end = if (index < fields.size -1) "," else ""
+            val end = if (index < fields.size - 1) "," else ""
             code.appendLine("\t${variableElement.simpleName} = ${variableElement.simpleName}$end")
         }
         code.appendLine(")")
         code.appendLine("return result")
         return FunSpec.builder("update")
-            .addParameter("builder", classToBuild)
+            .addParameter(updateObjectParameterName, classToBuild)
             .receiver(sourceType.asKotlinClassName())
             .returns(sourceType.asKotlinTypeName())
             .addCode(code.toString())
@@ -216,46 +237,40 @@ class BuilderProcessor : AbstractProcessor() {
     private fun createCheckRequiredFieldsFunction(fields: List<Element>): FunSpec {
         val code = StringBuilder()
         fields.filterNot { it.isNullable() }
-                .forEach { field ->
-                    code.append("    check(${field.simpleName}·!=·null, {\"${field.simpleName}·must·not·be·null\"})").appendLine()
-                }
+            .forEach { field ->
+                code.append("    check(${field.simpleName}·!=·null, {\"${field.simpleName}·must·not·be·null\"})")
+                    .appendLine()
+            }
 
         return FunSpec.builder(CHECK_REQUIRED_FIELDS_FUNCTION_NAME)
-                .addCode(code.toString())
-                .addModifiers(KModifier.PRIVATE)
-                .build()
+            .addCode(code.toString())
+            .addModifiers(KModifier.PRIVATE)
+            .build()
     }
 
     /** Creates a property for the field identified by this element. */
     private fun Element.asProperty(): PropertySpec =
-            PropertySpec.builder(simpleName.toString(), asKotlinTypeName().copy(nullable = true), KModifier.PUBLIC)
-                    .initializer(CodeBlock.of("null"))
-                    .addAnnotations(this.annotationMirrors.filter {
-                        it.annotationType.asElement().simpleName.toString() != Nullable::class.simpleName
-                    }.filter {
-                        it.annotationType.asElement().simpleName.toString() != NotNull::class.simpleName
-                    }.map { AnnotationSpec.get(it) })
-                    .build()
-
-    private fun Element.asParameter(): ParameterSpec =
-        ParameterSpec.builder(simpleName.toString(), asKotlinTypeName().copy(nullable = true), KModifier.PUBLIC)
-            .defaultValue("null")
+        PropertySpec.builder(
+            simpleName.toString(),
+            asKotlinTypeName().copy(nullable = true),
+            KModifier.PUBLIC
+        )
+            .initializer(CodeBlock.of("null"))
+            .addAnnotations(this.annotationMirrors.filter {
+                it.annotationType.asElement().simpleName.toString() != Nullable::class.simpleName
+            }.filter {
+                it.annotationType.asElement().simpleName.toString() != NotNull::class.simpleName
+            }.map { AnnotationSpec.get(it) })
             .build()
 
-    /** Returns the correct default value for this element - the value of any [DefaultValue] annotation, or "null". */
-    private fun Element.defaultValue(): String {
-        return if (hasAnnotation(DefaultValue::class.java)) {
-            val default = this.findAnnotation(DefaultValue::class.java).value
-            // make sure that strings are wrapped in quotes
-            return if (asType().toString() == "java.lang.String" && !default.startsWith("\"")) {
-                "\"$default\""
-            } else {
-                default
-            }
-        } else {
-            "null"
-        }
-    }
+    private fun Element.asParameter(): ParameterSpec =
+        ParameterSpec.builder(
+            simpleName.toString(),
+            asKotlinTypeName().copy(nullable = true),
+            KModifier.PUBLIC
+        )
+            .defaultValue("null")
+            .build()
 
     /** Creates a function that sets the property identified by this element, and returns the [builder]. */
     private fun Element.asSetterFunctionReturning(builder: ClassName): FunSpec {
@@ -266,10 +281,10 @@ class BuilderProcessor : AbstractProcessor() {
             fieldType
         }
         return FunSpec.builder(simpleName.toString())
-                .addParameter(ParameterSpec.builder("value", parameterClass).build())
-                .returns(builder)
-                .addCode("return apply·{ this.$simpleName·=·value }\n")
-                .build()
+            .addParameter(ParameterSpec.builder("value", parameterClass).build())
+            .returns(builder)
+            .addCode("return apply·{ this.$simpleName·=·value }\n")
+            .build()
     }
 
     /**
@@ -278,16 +293,6 @@ class BuilderProcessor : AbstractProcessor() {
      */
     private fun Element.asKotlinTypeName(): TypeName {
         var typeName = asType().asKotlinTypeName()
-        if (typeName is ParameterizedTypeName) {
-            if (hasAnnotation(NullableType::class.java)
-                    && assert(typeName.typeArguments.isNotEmpty(), "NullableType annotation should not be applied to a property without type arguments!")) {
-                typeName = typeName.withNullableType()
-            }
-            if (hasAnnotation(Mutable::class.java)
-                    && assert(MUTABLE_COLLECTIONS.containsKey(typeName.rawType), "Mutable annotation should not be applied to non-mutable collections!")) {
-                typeName = typeName.asMutableCollection()
-            }
-        }
         return typeName
     }
 
@@ -313,8 +318,8 @@ class BuilderProcessor : AbstractProcessor() {
      */
     private fun ParameterizedTypeName.asMutableCollection(): ParameterizedTypeName {
         val mutable = MUTABLE_COLLECTIONS[rawType]!!
-                .parameterizedBy(*this.typeArguments.toTypedArray())
-                .copy(annotations = this.annotations) as ParameterizedTypeName
+            .parameterizedBy(*this.typeArguments.toTypedArray())
+            .copy(annotations = this.annotations) as ParameterizedTypeName
         return if (isNullable) {
             mutable.copy(nullable = true) as ParameterizedTypeName
         } else {
@@ -325,7 +330,8 @@ class BuilderProcessor : AbstractProcessor() {
     /** Converts this TypeMirror to a [TypeName], ensuring that java types such as [java.lang.String] are converted to their Kotlin equivalent. */
     private fun TypeMirror.asKotlinTypeName(): TypeName {
         return when (this) {
-            is PrimitiveType -> processingEnv.typeUtils.boxedClass(this as PrimitiveType?).asKotlinClassName()
+            is PrimitiveType -> processingEnv.typeUtils.boxedClass(this as PrimitiveType?)
+                .asKotlinClassName()
             is ArrayType -> {
                 val arrayClass = ClassName("kotlin", "Array")
                 return arrayClass.parameterizedBy(this.componentType.asKotlinTypeName())
@@ -334,9 +340,9 @@ class BuilderProcessor : AbstractProcessor() {
                 val typeName = this.asTypeElement().asKotlinClassName()
                 if (!this.typeArguments.isEmpty()) {
                     val kotlinTypeArguments = typeArguments.stream()
-                            .map { it.asKotlinTypeName() }
-                            .collect(Collectors.toList())
-                            .toTypedArray()
+                        .map { it.asKotlinTypeName() }
+                        .collect(Collectors.toList())
+                        .toTypedArray()
                     return typeName.parameterizedBy(*kotlinTypeArguments)
                 }
                 return typeName
@@ -381,18 +387,18 @@ class BuilderProcessor : AbstractProcessor() {
     /** Return true if this element has the specified [annotation]. */
     private fun Element.hasAnnotationDirectly(annotation: Class<*>): Boolean {
         return this.annotationMirrors
-                .map { it.annotationType.toString() }
-                .toSet()
-                .contains(annotation.name)
+            .map { it.annotationType.toString() }
+            .toSet()
+            .contains(annotation.name)
     }
 
     /** Return true if there is a constructor parameter with the same name as this element that has the specified [annotation]. */
     private fun Element.hasAnnotationViaConstructorParameter(annotation: Class<*>): Boolean {
         val parameterAnnotations = getConstructorParameter()?.annotationMirrors ?: listOf()
         return parameterAnnotations
-                .map { it.annotationType.toString() }
-                .toSet()
-                .contains(annotation.name)
+            .map { it.annotationType.toString() }
+            .toSet()
+            .contains(annotation.name)
     }
 
     /** Returns the first constructor parameter with the same name as this element, if any such exists. */
@@ -401,8 +407,8 @@ class BuilderProcessor : AbstractProcessor() {
         return if (enclosingElement is TypeElement) {
             val allMembers = processingEnv.elementUtils.getAllMembers(enclosingElement)
             constructorsIn(allMembers)
-                    .flatMap { it.parameters }
-                    .firstOrNull { it.simpleName == this.simpleName }
+                .flatMap { it.parameters }
+                .firstOrNull { it.simpleName == this.simpleName }
         } else {
             null
         }
