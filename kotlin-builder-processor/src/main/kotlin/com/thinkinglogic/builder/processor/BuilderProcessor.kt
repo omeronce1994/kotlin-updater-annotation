@@ -2,15 +2,14 @@ package com.thinkinglogic.builder.processor
 
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.thinkinglogic.builder.annotation.Builder
-import com.thinkinglogic.builder.annotation.DefaultValue
-import com.thinkinglogic.builder.annotation.Mutable
-import com.thinkinglogic.builder.annotation.NullableType
+import com.thinkinglogic.builder.annotation.*
 import com.thinkinglogic.builder.annotation.ktx.JsonKtx
 import com.thinkinglogic.builder.annotation.ktx.JsonKtx.toAnyMap
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import org.jetbrains.annotations.NotNull
+import org.jetbrains.annotations.Nullable
 import java.io.File
 import java.util.*
 import java.util.stream.Collectors
@@ -29,7 +28,7 @@ import javax.tools.Diagnostic.Kind.NOTE
  * Kapt processor for the @Builder annotation.
  * Constructs a Builder for the annotated class.
  */
-@SupportedAnnotationTypes("com.thinkinglogic.builder.annotation.Builder")
+@SupportedAnnotationTypes("com.thinkinglogic.builder.annotation.UpdateObject")
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 @SupportedOptions(BuilderProcessor.KAPT_KOTLIN_GENERATED_OPTION_NAME)
 class BuilderProcessor : AbstractProcessor() {
@@ -46,9 +45,9 @@ class BuilderProcessor : AbstractProcessor() {
     }
 
     override fun process(annotations: MutableSet<out TypeElement>?, roundEnv: RoundEnvironment): Boolean {
-        val annotatedElements = roundEnv.getElementsAnnotatedWith(Builder::class.java)
+        val annotatedElements = roundEnv.getElementsAnnotatedWith(UpdateObject::class.java)
         if (annotatedElements.isEmpty()) {
-            processingEnv.noteMessage { "No classes annotated with @${Builder::class.java.simpleName} in this round ($roundEnv)" }
+            processingEnv.noteMessage { "No classes annotated with @${UpdateObject::class.java.simpleName} in this round ($roundEnv)" }
             return false
         }
 
@@ -93,7 +92,7 @@ class BuilderProcessor : AbstractProcessor() {
         val builderClass = ClassName(packageName, builderClassName)
         val builderSpec = TypeSpec.classBuilder(builderClassName).addModifiers(KModifier.DATA)
         builderSpec.primaryConstructor(*fields.map{ it.asProperty() }.toTypedArray())
-        builderSpec.addType(createCompanionObject(classToBuild, builderClass))
+        builderSpec.addType(createCompanionObject(classToBuild, builderClass, fields))
         val constructorBuilder = FunSpec.constructorBuilder()
 
 //        fields.forEach { field ->
@@ -190,19 +189,21 @@ class BuilderProcessor : AbstractProcessor() {
                 .build()
     }
 
-    private fun createCompanionObject(sourceType: TypeElement, classToBuild: ClassName)
-        = TypeSpec.companionObjectBuilder().addFunction(createUpdateFunction(sourceType, classToBuild)).build()
+    private fun createCompanionObject(sourceType: TypeElement, classToBuild: ClassName, fields: List<VariableElement>)
+        = TypeSpec.companionObjectBuilder().addFunction(createUpdateFunction(sourceType, classToBuild, fields)).build()
 
-    private fun createUpdateFunction(sourceType: TypeElement, classToBuild: ClassName): FunSpec {
+    private fun createUpdateFunction(sourceType: TypeElement, classToBuild: ClassName, fields: List<VariableElement>): FunSpec {
         val code = StringBuilder()
-        code.appendLine("val builderMap = builder.toAnyMap()")
-        code.appendLine("val fieldsMap = this.toAnyMap().toMutableMap()")
-        code.appendLine("builderMap.entries.forEach {")
-        code.appendLine("\tif (it.value != null) {")
-        code.appendLine("\t\tfieldsMap[it.key] = it.value")
-        code.appendLine("\t}")
-        code.appendLine("}")
-        code.appendLine("return Json.encodeToString(JsonElement.serializer(), fieldsMap.toJsonElement()).toDataClass()")
+        fields.forEach {
+            code.appendLine("val ${it.simpleName} = builder.${it.simpleName} ?: this.${it.simpleName}")
+        }
+        code.appendLine("val result = ${sourceType.simpleName}(")
+        fields.forEachIndexed { index, variableElement ->
+            val end = if (index < fields.size -1) "," else ""
+            code.appendLine("\t${variableElement.simpleName} = ${variableElement.simpleName}$end")
+        }
+        code.appendLine(")")
+        code.appendLine("return result")
         return FunSpec.builder("update")
             .addParameter("builder", classToBuild)
             .receiver(sourceType.asKotlinClassName())
@@ -229,6 +230,11 @@ class BuilderProcessor : AbstractProcessor() {
     private fun Element.asProperty(): PropertySpec =
             PropertySpec.builder(simpleName.toString(), asKotlinTypeName().copy(nullable = true), KModifier.PUBLIC)
                     .initializer(CodeBlock.of("null"))
+                    .addAnnotations(this.annotationMirrors.filter {
+                        it.annotationType.asElement().simpleName.toString() != Nullable::class.simpleName
+                    }.filter {
+                        it.annotationType.asElement().simpleName.toString() != NotNull::class.simpleName
+                    }.map { AnnotationSpec.get(it) })
                     .build()
 
     private fun Element.asParameter(): ParameterSpec =

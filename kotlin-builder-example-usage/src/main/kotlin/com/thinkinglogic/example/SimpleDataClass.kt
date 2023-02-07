@@ -2,9 +2,12 @@ package com.thinkinglogic.example
 
 import com.thinkinglogic.builder.annotation.Builder
 import com.thinkinglogic.builder.annotation.DefaultValue
+import com.thinkinglogic.builder.annotation.UpdateObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Serializer
 import java.time.LocalDate
 
-@Builder
+@UpdateObject
 data class SimpleDataClass(
         val notNullString: String,
         val nullableString: String?,
