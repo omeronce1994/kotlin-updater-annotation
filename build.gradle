@@ -34,8 +34,8 @@ nexusPublishing {
 
 
 allprojects {
-    group = "com.thinkinglogic.builder"
-    version = "1.2.3"
+    group = "com.nando.update-object"
+    version = "1.0.2"
     apply plugin: "kotlin"
 
     repositories {
