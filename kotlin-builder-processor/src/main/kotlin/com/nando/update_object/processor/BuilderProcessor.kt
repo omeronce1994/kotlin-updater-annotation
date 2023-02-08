@@ -55,6 +55,8 @@ class BuilderProcessor : AbstractProcessor() {
             return false
         }
 
+        processingEnv.noteMessage { "Generating Builders in $roundEnv" }
+
         processingEnv.noteMessage { "Generating Builders for ${annotatedElements.size} classes in $generatedSourcesRoot" }
 
         val sourceRootFile = File(generatedSourcesRoot)
@@ -74,7 +76,7 @@ class BuilderProcessor : AbstractProcessor() {
             }
         }
 
-        return false
+        return true
     }
 
     /** Invokes [writeBuilder] to create a builder for the given [classElement]. */
