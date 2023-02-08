@@ -12,8 +12,8 @@ task javadocJar(type: Jar) {
 publishing {
     publications {
         BuilderAnnotation(MavenPublication) {
-            groupId "com.thinkinglogic.builder"
-            artifactId "kotlin-builder-annotation"
+            groupId "com.nando.update-object"
+            artifactId "kotlin-update-object-annotation"
             from components.java
             artifact sourcesJar
             artifact javadocJar
@@ -49,13 +49,6 @@ publishing {
             url = version.endsWith("SNAPSHOT") ? snapshotsRepoUrl : releasesRepoUrl
         }
     }
-}
-
-signing {
-    def signingKey = System.getenv("SONATYPE_GPG_SECRET_KEY")
-    def signingPassword = System.getenv("SONATYPE_GPG_PASSPHRASE")
-    useInMemoryPgpKeys(signingKey, signingPassword)
-    sign publishing.publications.BuilderAnnotation
 }
 
 javadoc {

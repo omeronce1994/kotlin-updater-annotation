@@ -3,8 +3,7 @@ plugins {
 }
 
 dependencies {
-    implementation project(":kotlin-builder-annotation")
-    implementation "org.jetbrains.kotlin:kotlin-reflect"
+    implementation project(":kotlin-update-object-annotation")
 
     kapt project(":kotlin-builder-processor")
     
