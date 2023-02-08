@@ -3,7 +3,7 @@ plugins {
 }
 
 dependencies {
-    implementation project(":kotlin-builder-annotation")
+    implementation project(":kotlin-update-object-annotation")
 
     kapt project(":kotlin-builder-processor")
     
