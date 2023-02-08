@@ -1,6 +1,7 @@
 package com.nando.update_object.processor
 
 import com.nando.update_object.annotation.UpdateObject
+import com.nando.update_object.annotation.modifiers.UpdateObjectModifier
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import org.jetbrains.annotations.NotNull
@@ -13,6 +14,7 @@ import javax.lang.model.SourceVersion
 import javax.lang.model.element.*
 import javax.lang.model.type.ArrayType
 import javax.lang.model.type.DeclaredType
+import javax.lang.model.type.MirroredTypesException
 import javax.lang.model.type.PrimitiveType
 import javax.lang.model.type.TypeMirror
 import javax.lang.model.util.ElementFilter.*
@@ -105,9 +107,14 @@ class BuilderProcessor : AbstractProcessor() {
         processingEnv.noteMessage { "Writing $packageName.$builderClassName" }
 
         val builderClass = ClassName(packageName, builderClassName)
-        val builderSpec = TypeSpec.classBuilder(builderClassName).addModifiers(KModifier.DATA)
+        processingEnv.noteMessage { "Adding modifiers" }
+        val visibilityModifiers = classToBuild.getUpdateObjectVisibilityModifiers().map { it.toKModifier() }.toSet()
+        val modifiersSet = visibilityModifiers + setOf(KModifier.DATA)
+        processingEnv.noteMessage { "Added modifiers $modifiersSet" }
+        val builderSpec =
+            TypeSpec.classBuilder(builderClassName).addModifiers(*modifiersSet.toTypedArray())
         builderSpec.primaryConstructor(*fields.map { it.asProperty() }.toTypedArray())
-        builderSpec.addType(createCompanionObject(classToBuild, builderClass, fields))
+        builderSpec.addType(createCompanionObject(classToBuild, builderClass, fields, visibilityModifiers = visibilityModifiers))
         val constructorBuilder = FunSpec.constructorBuilder()
 
 //        fields.forEach { field ->
@@ -121,6 +128,46 @@ class BuilderProcessor : AbstractProcessor() {
             .addType(builderSpec.build())
             .build()
             .writeTo(sourceRoot)
+    }
+
+    private fun TypeElement.getUpdateObjectVisibilityModifiers(): Set<UpdateObjectModifier.VisibilityModifier> {
+        return if (hasAnnotation(UpdateObject::class.java)) {
+            // make sure that strings are wrapped in quotes
+            val annotation = this.findAnnotation(UpdateObject::class.java)
+            val modifiers = try {
+                annotation.visibilityModifiers as List<TypeMirror>
+            } catch (e: MirroredTypesException) {
+                e.typeMirrors
+            } catch (e: Exception) {
+                errorMessage { "failed to get modifiers. message: ${e.message}" }
+                listOf()
+            }
+            processingEnv.noteMessage { "Processing modifiers $modifiers" }
+            return modifiers.map {
+                val name = it.toString()
+                val result : UpdateObjectModifier.VisibilityModifier= when (name) {
+                    UpdateObjectModifier.VisibilityModifier.Internal::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Internal
+                    UpdateObjectModifier.VisibilityModifier.Private::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Private
+                    UpdateObjectModifier.VisibilityModifier.Protected::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Protected
+                    else -> {
+                        val error = "Provided modifier ${it.asTypeElement().simpleName} is does not implement ${UpdateObjectModifier::class.java.simpleName}"
+                        errorMessage {
+                            error
+                        }
+                        throw IllegalArgumentException(error)
+                    }
+                }
+                result
+            }.toSet()
+        } else {
+            setOf()
+        }
+    }
+
+    private fun UpdateObjectModifier.VisibilityModifier.toKModifier() = when (this) {
+        is UpdateObjectModifier.VisibilityModifier.Internal -> KModifier.INTERNAL
+        is UpdateObjectModifier.VisibilityModifier.Private -> KModifier.PRIVATE
+        is UpdateObjectModifier.VisibilityModifier.Protected -> KModifier.PROTECTED
     }
 
     /** Returns all fields in this type that also appear as a constructor parameter. */
@@ -206,14 +253,17 @@ class BuilderProcessor : AbstractProcessor() {
     private fun createCompanionObject(
         sourceType: TypeElement,
         classToBuild: ClassName,
-        fields: List<VariableElement>
+        fields: List<VariableElement>,
+        visibilityModifiers: Set<KModifier>
     ) = TypeSpec.companionObjectBuilder()
-        .addFunction(createUpdateFunction(sourceType, classToBuild, fields)).build()
+        .addModifiers(visibilityModifiers)
+        .addFunction(createUpdateFunction(sourceType, classToBuild, fields, visibilityModifiers)).build()
 
     private fun createUpdateFunction(
         sourceType: TypeElement,
         classToBuild: ClassName,
         fields: List<VariableElement>,
+        visibilityModifiers: Set<KModifier>,
         updateObjectParameterName: String = "updateObject"
     ): FunSpec {
         val code = StringBuilder()
@@ -228,6 +278,7 @@ class BuilderProcessor : AbstractProcessor() {
         code.appendLine(")")
         code.appendLine("return result")
         return FunSpec.builder("update")
+            .addModifiers(visibilityModifiers)
             .addParameter(updateObjectParameterName, classToBuild)
             .receiver(sourceType.asKotlinClassName())
             .returns(sourceType.asKotlinTypeName())
