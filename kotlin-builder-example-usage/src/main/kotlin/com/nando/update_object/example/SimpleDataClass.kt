@@ -5,7 +5,7 @@ import com.nando.update_object.annotation.UpdateObject
 import com.nando.update_object.annotation.modifiers.UpdateObjectModifier
 import java.time.LocalDate
 
-@UpdateObject(visibilityModifiers = [UpdateObjectModifier.VisibilityModifier.Internal::class])
+@UpdateObject(visibilityModifier = UpdateObjectModifier.VisibilityModifier.Internal::class)
 data class SimpleDataClass(
         @RequiredForUpdateObject
         val notNullString: String,

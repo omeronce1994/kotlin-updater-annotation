@@ -5,5 +5,6 @@ sealed interface UpdateObjectModifier {
         object Internal : VisibilityModifier
         object Private : VisibilityModifier
         object Protected : VisibilityModifier
+        object Public : VisibilityModifier
     }
 }
