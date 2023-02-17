@@ -16,7 +16,7 @@ plugins {
 
 allprojects {
     group = "com.nando.update-object"
-    version = "1.0.8"
+    version = "1.0.9"
     apply plugin: "kotlin"
 
     repositories {

@@ -23,11 +23,11 @@ import kotlin.reflect.KClass
  * }
  * ```
  * @property className - class name for generated update object. If left empty default name will be <annotated-class-name>UpdateObject
- * @property visibilityModifiers - visibility modifiers for the generated class
+ * @property visibilityModifier - visibility modifier for the generated class. default is [UpdateObjectModifier.VisibilityModifier.Public]
  */
 @Retention(AnnotationRetention.SOURCE)
 @Target(AnnotationTarget.CLASS, AnnotationTarget.CONSTRUCTOR)
 annotation class UpdateObject(
     val className: String = "",
-    val visibilityModifiers: Array<KClass<out UpdateObjectModifier.VisibilityModifier>> = []
+    val visibilityModifier: KClass<out UpdateObjectModifier.VisibilityModifier> = UpdateObjectModifier.VisibilityModifier.Public::class
 )

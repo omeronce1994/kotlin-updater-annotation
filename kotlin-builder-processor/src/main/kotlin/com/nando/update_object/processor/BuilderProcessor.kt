@@ -110,13 +110,13 @@ class BuilderProcessor : AbstractProcessor() {
 
         val builderClass = ClassName(packageName, builderClassName)
         processingEnv.noteMessage { "Adding modifiers" }
-        val visibilityModifiers = classToBuild.getUpdateObjectVisibilityModifiers().map { it.toKModifier() }.toSet()
-        val modifiersSet = visibilityModifiers + setOf(KModifier.DATA)
+        val visibilityModifier = classToBuild.getUpdateObjectVisibilityModifiers().toKModifier()
+        val modifiersSet = setOf(visibilityModifier, KModifier.DATA)
         processingEnv.noteMessage { "Added modifiers $modifiersSet" }
         val builderSpec =
             TypeSpec.classBuilder(builderClassName).addModifiers(*modifiersSet.toTypedArray())
         builderSpec.primaryConstructor(*fields.map { it.asProperty() }.toTypedArray())
-        builderSpec.addType(createCompanionObject(classToBuild, builderClass, fields, visibilityModifiers = visibilityModifiers))
+        builderSpec.addType(createCompanionObject(classToBuild, builderClass, fields, visibilityModifiers = setOf(visibilityModifier)))
         val constructorBuilder = FunSpec.constructorBuilder()
 
 //        fields.forEach { field ->
@@ -143,37 +143,35 @@ class BuilderProcessor : AbstractProcessor() {
         fallbackName
     }
 
-    private fun TypeElement.getUpdateObjectVisibilityModifiers(): Set<UpdateObjectModifier.VisibilityModifier> {
+    private fun TypeElement.getUpdateObjectVisibilityModifiers(): UpdateObjectModifier.VisibilityModifier {
         return if (hasAnnotation(UpdateObject::class.java)) {
             // make sure that strings are wrapped in quotes
             val annotation = this.findAnnotation(UpdateObject::class.java)
-            val modifiers = try {
-                annotation.visibilityModifiers as List<TypeMirror>
-            } catch (e: MirroredTypesException) {
-                e.typeMirrors
+            val modifier = try {
+                annotation.visibilityModifier as TypeMirror
+            } catch (e: MirroredTypeException) {
+                e.typeMirror
             } catch (e: Exception) {
                 errorMessage { "failed to get modifiers. message: ${e.message}" }
-                listOf()
+                throw e
             }
-            processingEnv.noteMessage { "Processing modifiers $modifiers" }
-            return modifiers.map {
-                val name = it.toString()
-                val result : UpdateObjectModifier.VisibilityModifier= when (name) {
-                    UpdateObjectModifier.VisibilityModifier.Internal::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Internal
-                    UpdateObjectModifier.VisibilityModifier.Private::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Private
-                    UpdateObjectModifier.VisibilityModifier.Protected::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Protected
-                    else -> {
-                        val error = "Provided modifier ${it.asTypeElement().simpleName} is does not implement ${UpdateObjectModifier::class.java.simpleName}"
-                        errorMessage {
-                            error
-                        }
-                        throw IllegalArgumentException(error)
+            processingEnv.noteMessage { "Processing modifiers $modifier" }
+            val name = modifier.toString()
+            val result : UpdateObjectModifier.VisibilityModifier= when (name) {
+                UpdateObjectModifier.VisibilityModifier.Internal::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Internal
+                UpdateObjectModifier.VisibilityModifier.Private::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Private
+                UpdateObjectModifier.VisibilityModifier.Protected::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Protected
+                else -> {
+                    val error = "Provided modifier ${modifier.asTypeElement().simpleName} is does not implement ${UpdateObjectModifier::class.java.simpleName}"
+                    errorMessage {
+                        error
                     }
+                    throw IllegalArgumentException(error)
                 }
-                result
-            }.toSet()
+            }
+            return result
         } else {
-            setOf()
+            throw IllegalStateException("Tried to get update visibility modifiers for class which is not annotated with ${UpdateObject::class.simpleName}")
         }
     }
 
@@ -181,6 +179,7 @@ class BuilderProcessor : AbstractProcessor() {
         is UpdateObjectModifier.VisibilityModifier.Internal -> KModifier.INTERNAL
         is UpdateObjectModifier.VisibilityModifier.Private -> KModifier.PRIVATE
         is UpdateObjectModifier.VisibilityModifier.Protected -> KModifier.PROTECTED
+        UpdateObjectModifier.VisibilityModifier.Public -> KModifier.PUBLIC
     }
 
     /** Returns all fields in this type that also appear as a constructor parameter. */
