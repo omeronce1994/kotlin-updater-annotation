@@ -161,6 +161,7 @@ class BuilderProcessor : AbstractProcessor() {
                 UpdateObjectModifier.VisibilityModifier.Internal::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Internal
                 UpdateObjectModifier.VisibilityModifier.Private::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Private
                 UpdateObjectModifier.VisibilityModifier.Protected::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Protected
+                UpdateObjectModifier.VisibilityModifier.Public::class.qualifiedName -> UpdateObjectModifier.VisibilityModifier.Public
                 else -> {
                     val error = "Provided modifier ${modifier.asTypeElement().simpleName} is does not implement ${UpdateObjectModifier::class.java.simpleName}"
                     errorMessage {
