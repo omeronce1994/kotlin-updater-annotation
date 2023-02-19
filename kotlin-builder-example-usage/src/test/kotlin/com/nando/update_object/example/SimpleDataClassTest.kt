@@ -1,6 +1,7 @@
 package com.nando.update_object.example
 
 import com.nando.update_object.example.SimpleDataClassUpdateObject.Companion.update
+import com.nando.update_object.example.TestPartialObject.Companion.update
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
