@@ -1,5 +1,6 @@
 package com.nando.update_object.processor
 
+import com.nando.update_object.annotation.PartOfPartialObjects
 import com.nando.update_object.annotation.RequiredForUpdateObject
 import com.nando.update_object.annotation.UpdateObject
 import com.nando.update_object.annotation.modifiers.UpdateObjectModifier
@@ -117,7 +118,23 @@ class BuilderProcessor : AbstractProcessor() {
             TypeSpec.classBuilder(builderClassName).addModifiers(*modifiersSet.toTypedArray())
         builderSpec.primaryConstructor(*fields.map { it.asProperty() }.toTypedArray())
         builderSpec.addType(createCompanionObject(classToBuild, builderClass, fields, visibilityModifiers = setOf(visibilityModifier)))
-        val constructorBuilder = FunSpec.constructorBuilder()
+        val partialObjectClassNameToFieldsMap = mutableMapOf<String, Set<VariableElement>>()
+        fields.forEach {
+            if (it.hasAnnotation(PartOfPartialObjects::class.java)) {
+                val annotation = it.findAnnotation(PartOfPartialObjects::class.java)
+                val classes = annotation.partialClassesName
+                classes.forEach { className ->
+                    val partialObjectFields = partialObjectClassNameToFieldsMap[className]?.toMutableSet() ?: mutableSetOf()
+                    partialObjectFields.add(it)
+                    partialObjectClassNameToFieldsMap[className] = partialObjectFields
+                }
+            }
+        }
+        partialObjectClassNameToFieldsMap.entries.forEach {
+            val className = it.key
+            val classFields = it.value
+            buildPartialObjectsClasses(classToBuild, classFields.toList(), className, sourceRoot)
+        }
 
 //        fields.forEach { field ->
 //            processingEnv.noteMessage { "Adding field: $field" }
@@ -127,6 +144,26 @@ class BuilderProcessor : AbstractProcessor() {
         //builderSpec.primaryConstructor(constructorBuilder.build())
 
         FileSpec.builder(packageName, builderClassName)
+            .addType(builderSpec.build())
+            .build()
+            .writeTo(sourceRoot)
+    }
+
+    private fun buildPartialObjectsClasses(
+        fullClass: TypeElement,
+        fields: List<VariableElement>,
+        partialClassName: String,
+        sourceRoot: File
+    ) {
+        val packageName = processingEnv.elementUtils.getPackageOf(fullClass).toString()
+        processingEnv.noteMessage { "Writing $packageName.$partialClassName" }
+        val partialClass = ClassName(packageName, partialClassName)
+        val modifiersSet = setOf(KModifier.DATA)
+        val builderSpec =
+            TypeSpec.classBuilder(partialClass).addModifiers(*modifiersSet.toTypedArray())
+        builderSpec.primaryConstructor(*fields.map { it.asPartialClassProperty() }.toTypedArray())
+        builderSpec.addType(createPartialObjectCompanionObject(fullClass, partialClass, fields, visibilityModifiers = setOf()))
+        FileSpec.builder(packageName, partialClassName)
             .addType(builderSpec.build())
             .build()
             .writeTo(sourceRoot)
@@ -303,6 +340,65 @@ class BuilderProcessor : AbstractProcessor() {
             .build()
     }
 
+    private fun createPartialObjectCompanionObject(
+        sourceType: TypeElement,
+        classToBuild: ClassName,
+        fields: List<VariableElement>,
+        visibilityModifiers: Set<KModifier>
+    ) = TypeSpec.companionObjectBuilder()
+        .addModifiers(visibilityModifiers)
+        .addFunction(createPartialObjectUpdateFunction(sourceType, classToBuild, fields, visibilityModifiers))
+        .addFunction(createMapToFunction(sourceType, classToBuild, fields, visibilityModifiers)).build()
+
+    private fun createPartialObjectUpdateFunction(
+        sourceType: TypeElement,
+        classToBuild: ClassName,
+        fields: List<VariableElement>,
+        visibilityModifiers: Set<KModifier>,
+        updateObjectParameterName: String = "updateObject"
+    ): FunSpec {
+        val code = StringBuilder()
+        fields.forEach {
+            code.appendLine("val ${it.simpleName} = $updateObjectParameterName.${it.simpleName}")
+        }
+        code.appendLine("val result = copy(")
+        fields.forEachIndexed { index, variableElement ->
+            val end = if (index < fields.size - 1) "," else ""
+            code.appendLine("\t${variableElement.simpleName} = ${variableElement.simpleName}$end")
+        }
+        code.appendLine(")")
+        code.appendLine("return result")
+        return FunSpec.builder("update")
+            .addModifiers(visibilityModifiers)
+            .addParameter(updateObjectParameterName, classToBuild)
+            .receiver(sourceType.asKotlinClassName())
+            .returns(sourceType.asKotlinTypeName())
+            .addCode(code.toString())
+            .build()
+    }
+
+    private fun createMapToFunction(
+        sourceType: TypeElement,
+        classToBuild: ClassName,
+        fields: List<VariableElement>,
+        visibilityModifiers: Set<KModifier>
+    ): FunSpec {
+        val code = StringBuilder()
+        code.appendLine("val result = ${classToBuild.simpleName}(")
+        fields.forEachIndexed { index, variableElement ->
+            val end = if (index < fields.size - 1) "," else ""
+            code.appendLine("\t${variableElement.simpleName} = ${variableElement.simpleName}$end")
+        }
+        code.appendLine(")")
+        code.appendLine("return result")
+        return FunSpec.builder("mapTo${classToBuild.simpleName}")
+            .addModifiers(visibilityModifiers)
+            .receiver(sourceType.asKotlinClassName())
+            .returns(classToBuild)
+            .addCode(code.toString())
+            .build()
+    }
+
     /** Creates a function that will invoke [check] to confirm that each required field is populated. */
     private fun createCheckRequiredFieldsFunction(fields: List<Element>): FunSpec {
         val code = StringBuilder()
@@ -318,11 +414,25 @@ class BuilderProcessor : AbstractProcessor() {
             .build()
     }
 
-    /** Creates a property for the field identified by this element. */
-    private fun Element.asProperty(): PropertySpec =
+    private fun Element.asPartialClassProperty(): PropertySpec =
         PropertySpec.builder(
             simpleName.toString(),
-            asKotlinTypeName().copy(nullable = !isMarkedWithRequiredAnnotation()),
+            asKotlinTypeName().copy(nullable = isNullable()),
+            KModifier.PUBLIC
+        )
+            //filter Nullable and NotNull annotations that are generated by Kotlin automatically for java compatibility
+            .addAnnotations(this.annotationMirrors.filter {
+                it.annotationType.asElement().simpleName.toString() != Nullable::class.simpleName
+            }.filter {
+                it.annotationType.asElement().simpleName.toString() != NotNull::class.simpleName
+            }.map { AnnotationSpec.get(it) })
+            .build()
+
+    /** Creates a property for the field identified by this element. */
+    private fun Element.asProperty(nullable: Boolean = !isMarkedWithRequiredAnnotation()): PropertySpec =
+        PropertySpec.builder(
+            simpleName.toString(),
+            type = asKotlinTypeName().copy(nullable = nullable),
             KModifier.PUBLIC
         )
             .initializer(CodeBlock.of("null"))
