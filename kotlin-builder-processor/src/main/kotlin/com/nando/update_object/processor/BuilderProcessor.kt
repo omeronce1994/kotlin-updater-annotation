@@ -311,7 +311,8 @@ class BuilderProcessor : AbstractProcessor() {
         visibilityModifiers: Set<KModifier>
     ) = TypeSpec.companionObjectBuilder()
         .addModifiers(visibilityModifiers)
-        .addFunction(createUpdateFunction(sourceType, classToBuild, fields, visibilityModifiers)).build()
+        .addFunction(createUpdateFunction(sourceType, classToBuild, fields, visibilityModifiers))
+        .addFunction(createToUpdateObjectFunction(sourceType, classToBuild, fields, visibilityModifiers)).build()
 
     private fun createUpdateFunction(
         sourceType: TypeElement,
@@ -336,6 +337,28 @@ class BuilderProcessor : AbstractProcessor() {
             .addParameter(updateObjectParameterName, classToBuild)
             .receiver(sourceType.asKotlinClassName())
             .returns(sourceType.asKotlinTypeName())
+            .addCode(code.toString())
+            .build()
+    }
+
+    private fun createToUpdateObjectFunction(
+        sourceType: TypeElement,
+        classToBuild: ClassName,
+        fields: List<VariableElement>,
+        visibilityModifiers: Set<KModifier>
+    ): FunSpec {
+        val code = StringBuilder()
+        code.appendLine("val result = ${classToBuild.simpleName}(")
+        fields.forEachIndexed { index, variableElement ->
+            val end = if (index < fields.size - 1) "," else ""
+            code.appendLine("\t${variableElement.simpleName} = ${variableElement.simpleName}$end")
+        }
+        code.appendLine(")")
+        code.appendLine("return result")
+        return FunSpec.builder("to${classToBuild.simpleName}")
+            .addModifiers(visibilityModifiers)
+            .receiver(sourceType.asKotlinClassName())
+            .returns(classToBuild)
             .addCode(code.toString())
             .build()
     }
